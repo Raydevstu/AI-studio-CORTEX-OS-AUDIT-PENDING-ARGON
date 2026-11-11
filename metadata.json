@@ -1,0 +1,6 @@
+{
+  "name": "CortexOS — AI-Native Software & Second Brain Operating System",
+  "description": "CortexOS combines the 4C Second Brain (3D Knowledge Graph, Chief Librarian, LLM Wiki) with the Jarvis Supervisor, 7 Specialist Studios, and the War Room execution interface.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
