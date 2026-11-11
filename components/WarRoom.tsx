@@ -73,10 +73,56 @@ import {
   Workflow,
 } from "lucide-react";
 
-const OWNER_HEADERS = {
-  "Content-Type": "application/json",
-  "x-owner-key": "cortex-owner-key-v1",
-};
+const OWNER_SESSION_KEY = "OWNER_KEY";
+
+function getStoredOwnerKey(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return (
+      window.sessionStorage.getItem(OWNER_SESSION_KEY) ||
+      window.sessionStorage.getItem("x-owner-key") ||
+      window.sessionStorage.getItem("owner_key") ||
+      window.sessionStorage.getItem("cortex_owner_key") ||
+      ""
+    ).trim();
+  } catch {
+    return "";
+  }
+}
+
+function setStoredOwnerKey(key: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const trimmed = key.trim();
+    window.sessionStorage.setItem(OWNER_SESSION_KEY, trimmed);
+    window.sessionStorage.setItem("x-owner-key", trimmed);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function clearStoredOwnerKey(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(OWNER_SESSION_KEY);
+    window.sessionStorage.removeItem("x-owner-key");
+    window.sessionStorage.removeItem("owner_key");
+    window.sessionStorage.removeItem("cortex_owner_key");
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function buildMutationHeaders(): Record<string, string> {
+  const key = getStoredOwnerKey();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (key) {
+    headers["x-owner-key"] = key;
+  }
+  return headers;
+}
 
 interface WarRoomProps {
   onPublishNodeToBrain: (node: BrainNode) => void;
@@ -171,6 +217,12 @@ export default function WarRoom({
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDesc, setNewProjectDesc] = useState("");
 
+  // Owner Key Unlock Modal State (sessionStorage only)
+  const [isUnlockModalOpen, setIsUnlockModalOpen] = useState(false);
+  const [ownerKeyInput, setOwnerKeyInput] = useState("");
+  const [isOwnerUnlocked, setIsOwnerUnlocked] = useState(false);
+  const [unlockPromptReason, setUnlockPromptReason] = useState<string | null>(null);
+
   // Right Panel (Studio Workbench) State
   const [rightPanelMode, setRightPanelMode] = useState<"docked" | "wide" | "detached" | "collapsed">("docked");
   const [selectedStudioSlug, setSelectedStudioSlug] = useState<StudioSlug>("design");
@@ -208,6 +260,7 @@ export default function WarRoom({
     let active = true;
     Promise.resolve().then(() => {
       if (active) {
+        setIsOwnerUnlocked(Boolean(getStoredOwnerKey()));
         void syncFromDatabase();
       }
     });
@@ -307,6 +360,38 @@ export default function WarRoom({
     setStatusBanner({ type, text });
   };
 
+  const handleUnauthorizedResponse = useCallback((actionLabel?: string) => {
+    clearStoredOwnerKey();
+    setIsOwnerUnlocked(false);
+    setStatusBanner(null);
+    setUnlockPromptReason(
+      actionLabel
+        ? `Authentication required (401): enter OWNER_KEY to authorize "${actionLabel}".`
+        : "Authentication required (401): enter a valid OWNER_KEY to authorize mutations."
+    );
+    setIsUnlockModalOpen(true);
+  }, []);
+
+  const handleUnlockSession = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = ownerKeyInput.trim();
+    if (!trimmed) return;
+    setStoredOwnerKey(trimmed);
+    setIsOwnerUnlocked(true);
+    setOwnerKeyInput("");
+    setUnlockPromptReason(null);
+    setStatusBanner(null);
+    setIsUnlockModalOpen(false);
+  };
+
+  const handleClearOwnerSession = () => {
+    clearStoredOwnerKey();
+    setIsOwnerUnlocked(false);
+    setOwnerKeyInput("");
+    setUnlockPromptReason(null);
+    setIsUnlockModalOpen(false);
+  };
+
   // --------------------------------------------------------------------------
   // HANDLER 1: Jarvis Lifecycle Phase Transition (Enforces Quality Gates + DB)
   // --------------------------------------------------------------------------
@@ -326,25 +411,36 @@ export default function WarRoom({
       return;
     }
 
-    setProjects((prev) =>
-      prev.map((p) =>
-        p.id === activeProject.id
-          ? { ...p, current_phase: targetPhase, updated_at: new Date().toISOString() }
-          : p
-      )
-    );
-    setSelectedStudioSlug(targetPhase);
-    showBanner("success", check.reason);
-
     try {
-      await fetch(`/api/projects/${encodeURIComponent(activeProject.id)}`, {
+      const res = await fetch(`/api/projects/${encodeURIComponent(activeProject.id)}`, {
         method: "PATCH",
-        headers: OWNER_HEADERS,
+        headers: buildMutationHeaders(),
         body: JSON.stringify({ current_phase: targetPhase }),
       });
+
+      if (res.status === 401) {
+        handleUnauthorizedResponse(`Transition Phase to ${targetPhase}`);
+        return;
+      }
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        showBanner("warning", errData.error || "Failed to transition lifecycle phase.");
+        return;
+      }
+
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === activeProject.id
+            ? { ...p, current_phase: targetPhase, updated_at: new Date().toISOString() }
+            : p
+        )
+      );
+      setSelectedStudioSlug(targetPhase);
+      showBanner("success", check.reason);
       await syncFromDatabase();
-    } catch {
-      // Ignore
+    } catch (err: unknown) {
+      showBanner("warning", (err as Error).message || "Failed to transition phase.");
     }
   };
 
@@ -369,7 +465,7 @@ export default function WarRoom({
     try {
       const res = await fetch("/api/sources", {
         method: "POST",
-        headers: OWNER_HEADERS,
+        headers: buildMutationHeaders(),
         body: JSON.stringify({
           title: cleanTitle,
           kind: newSourceKind,
@@ -379,6 +475,12 @@ export default function WarRoom({
           trust: newSourceTrust,
         }),
       });
+
+      if (res.status === 401) {
+        handleUnauthorizedResponse("Ingest Source");
+        return;
+      }
+
       const data = await res.json();
 
       if (!res.ok) {
@@ -442,12 +544,11 @@ export default function WarRoom({
     const directiveText = jarvisDirective.trim();
 
     setIsOrchestrating(true);
-    setJarvisDirective("");
 
     try {
       const res = await fetch("/api/jarvis/orchestrate", {
         method: "POST",
-        headers: OWNER_HEADERS,
+        headers: buildMutationHeaders(),
         body: JSON.stringify({
           projectId: activeProject.id,
           projectName: activeProject.name,
@@ -459,6 +560,12 @@ export default function WarRoom({
           contextTitles: projectArtifacts.map((a) => a.title),
         }),
       });
+
+      if (res.status === 401) {
+        handleUnauthorizedResponse("Dispatch Jarvis Directive");
+        return;
+      }
+
       const data = await res.json();
 
       if (!res.ok) {
@@ -466,18 +573,20 @@ export default function WarRoom({
         return;
       }
 
+      setJarvisDirective("");
       await syncFromDatabase();
 
-      if (data.artifact?.id) {
-        setSelectedArtifactId(data.artifact.id);
+      if (data.persisted?.artifact?.id) {
+        const persistedArt = data.persisted.artifact;
+        setSelectedArtifactId(persistedArt.id);
         onPublishNodeToBrain({
-          id: data.artifact.id,
-          title: data.artifact.title,
+          id: persistedArt.id,
+          title: persistedArt.title,
           category: "Projects",
           kind: "project",
           area: "system",
-          summary: data.artifact.summary,
-          notes: data.artifact.markdown_content || "",
+          summary: persistedArt.summary,
+          notes: persistedArt.markdown_content || "",
           stalenessDays: 0,
           needsAttention: false,
           connections: [],
@@ -507,35 +616,42 @@ export default function WarRoom({
   // --------------------------------------------------------------------------
   const handleApproveArtifact = async (artifactId: string) => {
     const nowIso = new Date().toISOString();
-    setArtifacts((prev) =>
-      prev.map((a) => {
-        if (a.id !== artifactId) return a;
-        const updated: Artifact = {
-          ...a,
-          status: "approved",
-          approved_by: "Ray (Founder) & Jarvis Supervisor",
-          approved_at: nowIso,
-          updated_at: nowIso,
-        };
-        return validateArtifact(updated);
-      })
-    );
 
     try {
       const res = await fetch(`/api/artifacts/${encodeURIComponent(artifactId)}`, {
         method: "PATCH",
-        headers: OWNER_HEADERS,
+        headers: buildMutationHeaders(),
         body: JSON.stringify({
           status: "approved",
           approved_by: "Ray (Founder) & Jarvis Supervisor",
           approved_at: nowIso,
         }),
       });
+
+      if (res.status === 401) {
+        handleUnauthorizedResponse("Approve Artifact");
+        return;
+      }
+
       if (!res.ok) {
-        const errData = await res.json();
+        const errData = await res.json().catch(() => ({}));
         showBanner("warning", errData.error || "Artifact approval rejected.");
         return;
       }
+
+      setArtifacts((prev) =>
+        prev.map((a) => {
+          if (a.id !== artifactId) return a;
+          const updated: Artifact = {
+            ...a,
+            status: "approved",
+            approved_by: "Ray (Founder) & Jarvis Supervisor",
+            approved_at: nowIso,
+            updated_at: nowIso,
+          };
+          return validateArtifact(updated);
+        })
+      );
       await syncFromDatabase();
       showBanner(
         "success",
@@ -551,53 +667,93 @@ export default function WarRoom({
   // --------------------------------------------------------------------------
   const handleApproveWikiPage = async (pageId: string) => {
     const nowIso = new Date().toISOString();
-    setWikiPages((prev) =>
-      prev.map((w) =>
-        w.id === pageId ? { ...w, review_state: "approved", updated_at: nowIso } : w
-      )
-    );
 
     try {
       const res = await fetch(`/api/wiki/${encodeURIComponent(pageId)}`, {
         method: "PATCH",
-        headers: OWNER_HEADERS,
+        headers: buildMutationHeaders(),
         body: JSON.stringify({
           review_state: "approved",
           resolved_by: "Ray (Founder)",
         }),
       });
-      if (res.ok) {
-        await syncFromDatabase();
+
+      if (res.status === 401) {
+        handleUnauthorizedResponse("Approve Doctrine Page");
+        return;
       }
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        showBanner("warning", errData.error || "Doctrine approval rejected.");
+        return;
+      }
+
+      setWikiPages((prev) =>
+        prev.map((w) =>
+          w.id === pageId ? { ...w, review_state: "approved", updated_at: nowIso } : w
+        )
+      );
+      await syncFromDatabase();
       showBanner(
         "success",
         "Doctrine page approved by human owner in PostgreSQL and exposed to Studio agents."
       );
-    } catch {
-      // Ignore
+    } catch (err: unknown) {
+      showBanner("warning", (err as Error).message || "Failed to approve doctrine page.");
     }
   };
 
   // --------------------------------------------------------------------------
   // HANDLER 6: Save Studio Environment Pack File
   // --------------------------------------------------------------------------
-  const handleSaveStudioPackFile = () => {
+  const handleSaveStudioPackFile = async () => {
     if (editingPackContent === null) return;
     const nowIso = new Date().toISOString();
-    setStudios((prev) =>
-      prev.map((s) => {
-        if (s.slug !== selectedStudio.slug) return s;
-        const updatedPack = { ...s.pack, [activePackFile]: editingPackContent };
-        return {
-          ...s,
-          pack: updatedPack,
-          manifest_hash: sha256Hex(JSON.stringify(updatedPack)),
-          updated_at: nowIso,
-        };
-      })
-    );
-    setEditingPackContent(null);
-    showBanner("success", `Updated ${activePackFile} in ${selectedStudio.name} and recomputed SHA-256 manifest hash.`);
+    const updatedPack = { ...selectedStudio.pack, [activePackFile]: editingPackContent };
+
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(activeProject.id)}`, {
+        method: "PATCH",
+        headers: buildMutationHeaders(),
+        body: JSON.stringify({
+          studio_pack_update: {
+            studio_slug: selectedStudio.slug,
+            pack: updatedPack,
+          },
+        }),
+      });
+
+      if (res.status === 401) {
+        handleUnauthorizedResponse("Update Studio Pack");
+        return;
+      }
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        showBanner("warning", errData.error || "Failed to save Studio Pack.");
+        return;
+      }
+
+      setStudios((prev) =>
+        prev.map((s) => {
+          if (s.slug !== selectedStudio.slug) return s;
+          return {
+            ...s,
+            pack: updatedPack,
+            manifest_hash: sha256Hex(JSON.stringify(updatedPack)),
+            updated_at: nowIso,
+          };
+        })
+      );
+      setEditingPackContent(null);
+      showBanner(
+        "success",
+        `Updated ${activePackFile} in ${selectedStudio.name} and recomputed SHA-256 manifest hash.`
+      );
+    } catch (err: unknown) {
+      showBanner("warning", (err as Error).message || "Failed to save Studio Pack.");
+    }
   };
 
   // --------------------------------------------------------------------------
@@ -615,7 +771,7 @@ export default function WarRoom({
     try {
       const res = await fetch("/api/projects", {
         method: "POST",
-        headers: OWNER_HEADERS,
+        headers: buildMutationHeaders(),
         body: JSON.stringify({
           slug,
           name: newProjectName.trim(),
@@ -626,6 +782,12 @@ export default function WarRoom({
           current_phase: "discovery",
         }),
       });
+
+      if (res.status === 401) {
+        handleUnauthorizedResponse("Create New Project");
+        return;
+      }
+
       const created = await res.json();
       if (res.ok && created.id) {
         await syncFromDatabase();
@@ -642,6 +804,42 @@ export default function WarRoom({
       }
     } catch (err: unknown) {
       showBanner("warning", (err as Error).message || "Failed to create project.");
+    }
+  };
+
+  const handleResolveAuditFinding = async (findingId: string) => {
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(activeProject.id)}`, {
+        method: "PATCH",
+        headers: buildMutationHeaders(),
+        body: JSON.stringify({
+          resolve_finding_id: findingId,
+          resolved_by: "Ray (Founder)",
+        }),
+      });
+
+      if (res.status === 401) {
+        handleUnauthorizedResponse("Resolve Audit Finding");
+        return;
+      }
+
+      if (!res.ok) return;
+
+      setAuditFindings((prev) =>
+        prev.map((f) =>
+          f.id === findingId
+            ? {
+                ...f,
+                status: "resolved",
+                resolved_at: new Date().toISOString(),
+                resolved_by: "Ray (Founder)",
+              }
+            : f
+        )
+      );
+      await syncFromDatabase();
+    } catch {
+      // Ignore
     }
   };
 
@@ -715,11 +913,31 @@ export default function WarRoom({
           })}
         </div>
 
-        {/* Right: Quick Stats & Right Panel Toggle */}
+        {/* Right: Quick Stats, Unlock Button & Right Panel Toggle */}
         <div className="flex items-center gap-2.5 text-[11px] text-[#e4e6eb]/60 font-mono tabular-nums shrink-0">
           <span className="hidden xl:inline">
             {sources.length} SOURCES · {artifacts.length} ARTIFACTS · {wikiPages.length} WIKI PAGES
           </span>
+          <button
+            type="button"
+            onClick={() => {
+              setUnlockPromptReason(null);
+              setIsUnlockModalOpen(true);
+            }}
+            aria-label="Unlock"
+            className={`px-2.5 py-1 rounded-[2px] border text-[10px] font-mono uppercase tracking-wider flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
+              isOwnerUnlocked
+                ? "bg-[#003322] border-[#00ffa3] text-[#00ffa3]"
+                : "bg-black border-[#e4e6eb]/25 text-[#e4e6eb] hover:border-[#00ffa3] hover:text-[#00ffa3]"
+            }`}
+          >
+            {isOwnerUnlocked ? (
+              <Unlock className="w-3 h-3 text-[#00ffa3]" />
+            ) : (
+              <Lock className="w-3 h-3 text-amber-400" />
+            )}
+            <span>Unlock</span>
+          </button>
           <button
             type="button"
             onClick={() =>
@@ -736,6 +954,104 @@ export default function WarRoom({
           </button>
         </div>
       </div>
+
+      {/* Owner Key Unlock Modal (sessionStorage only) */}
+      {isUnlockModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="unlock-modal-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+        >
+          <form
+            onSubmit={handleUnlockSession}
+            className="w-full max-w-md rounded-[2px] bg-[#0c0d0f] border-[1.5px] border-[#00ffa3] p-6 space-y-4 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2
+                  id="unlock-modal-title"
+                  className="text-sm font-mono font-bold uppercase tracking-wider text-[#00ffa3] flex items-center gap-2"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>Unlock Owner Session</span>
+                </h2>
+                <p className="text-xs text-[#e4e6eb]/65 mt-1">
+                  Enter the <code className="text-[#00ffa3]">OWNER_KEY</code> once to authorize
+                  mutating requests (POST / PATCH / DELETE). Stored in{" "}
+                  <code className="text-[#00ffa3]">sessionStorage</code> only.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsUnlockModalOpen(false)}
+                className="text-xs font-mono text-[#e4e6eb]/55 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+
+            {unlockPromptReason && (
+              <div
+                role="alert"
+                className="p-2.5 rounded-[2px] bg-amber-950/70 border border-amber-500/50 text-xs font-mono text-amber-200"
+              >
+                {unlockPromptReason}
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label
+                htmlFor="war-room-owner-key-input"
+                className="block text-[10px] font-mono uppercase tracking-wider text-[#e4e6eb]/70"
+              >
+                Owner Key
+              </label>
+              <input
+                id="war-room-owner-key-input"
+                type="password"
+                aria-label="Owner Key"
+                placeholder="Enter OWNER_KEY..."
+                value={ownerKeyInput}
+                onChange={(e) => setOwnerKeyInput(e.target.value)}
+                autoFocus
+                className="w-full px-3 py-2 rounded-[2px] bg-black border border-[#e4e6eb]/30 text-xs font-mono text-[#00ffa3] placeholder-[#e4e6eb]/35 outline-none focus:border-[#00ffa3]"
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-2 pt-2">
+              {isOwnerUnlocked ? (
+                <button
+                  type="button"
+                  onClick={handleClearOwnerSession}
+                  className="px-3 py-1.5 rounded-[2px] bg-black border border-rose-500/50 text-[10px] font-mono uppercase tracking-wider text-rose-300 hover:bg-rose-950/50"
+                >
+                  Clear Session Key
+                </button>
+              ) : (
+                <span className="text-[10px] font-mono text-[#e4e6eb]/45">
+                  Session currently locked
+                </span>
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsUnlockModalOpen(false)}
+                  className="px-3 py-1.5 rounded-[2px] bg-transparent border border-[#e4e6eb]/20 text-[10px] font-mono uppercase tracking-wider text-[#e4e6eb]/70 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-[2px] bg-[#00ffa3] hover:brightness-110 text-black font-mono font-extrabold text-[11px] uppercase tracking-wider"
+                >
+                  Save &amp; Unlock
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Status Notification Bar */}
       {statusBanner && (
@@ -1570,20 +1886,7 @@ export default function WarRoom({
                       {finding.status === "open" && (
                         <button
                           type="button"
-                          onClick={() =>
-                            setAuditFindings((prev) =>
-                              prev.map((f) =>
-                                f.id === finding.id
-                                  ? {
-                                      ...f,
-                                      status: "resolved",
-                                      resolved_at: new Date().toISOString(),
-                                      resolved_by: "Ray (Founder)",
-                                    }
-                                  : f
-                              )
-                            )
-                          }
+                          onClick={() => void handleResolveAuditFinding(finding.id)}
                           className="mt-2 px-3 py-1 rounded-[2px] bg-black border border-[#00ffa3] text-[10px] font-mono uppercase text-[#00ffa3]"
                         >
                           Mark Resolved

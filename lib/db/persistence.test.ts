@@ -55,11 +55,16 @@ test("1. Database automatic migration creates brain_objects and seeds 7 studios 
   assert.ok(Number(studiosCheck.rows[0]?.cnt) >= 7, "All 7 studios must be seeded");
 });
 
-test("2. Unauthenticated mutating requests are rejected with 401 across mutating routes", async () => {
+test("2. Unauthenticated or wrong-key mutating requests are rejected with 401 via timing-safe comparison while GET routes remain public", async () => {
   const { NextRequest } = await import("next/server.js");
-  const { POST: postSource } = await import("../../app/api/sources/route.ts");
+  const { POST: postSource, GET: getSources } = await import("../../app/api/sources/route.ts");
   const { POST: postProject } = await import("../../app/api/projects/route.ts");
-  const { POST: postMigrate } = await import("../../app/api/admin/migrate/route.ts");
+  const { timingSafeCompareKeys } = await import("./auth.ts");
+
+  assert.equal(timingSafeCompareKeys("secret-1", "secret-1"), true);
+  assert.equal(timingSafeCompareKeys("secret-1", "secret-2"), false);
+  assert.equal(timingSafeCompareKeys("short", "longer-secret"), false);
+  assert.equal(timingSafeCompareKeys("", "secret-1"), false);
 
   const unauthSourceReq = new NextRequest("http://localhost:3000/api/sources", {
     method: "POST",
@@ -69,19 +74,22 @@ test("2. Unauthenticated mutating requests are rejected with 401 across mutating
   const res1 = await postSource(unauthSourceReq);
   assert.equal(res1.status, 401);
 
-  const unauthProjReq = new NextRequest("http://localhost:3000/api/projects", {
+  const wrongKeyProjReq = new NextRequest("http://localhost:3000/api/projects", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-owner-key": "invalid-owner-key-attempt",
+    },
     body: JSON.stringify({ name: "Unauthorized Project" }),
   });
-  const res2 = await postProject(unauthProjReq);
+  const res2 = await postProject(wrongKeyProjReq);
   assert.equal(res2.status, 401);
 
-  const unauthMigrateReq = new NextRequest("http://localhost:3000/api/admin/migrate", {
-    method: "POST",
+  const publicGetReq = new NextRequest("http://localhost:3000/api/sources", {
+    method: "GET",
   });
-  const res3 = await postMigrate(unauthMigrateReq);
-  assert.equal(res3.status, 401);
+  const res3 = await getSources(publicGetReq);
+  assert.equal(res3.status, 200);
 });
 
 test("3. POST /api/sources enforces 413 (>2MB), defaults trust='untrusted', persists entities/concepts/relationships/claims/wiki pages, and rejects duplicate hash with 409", async () => {

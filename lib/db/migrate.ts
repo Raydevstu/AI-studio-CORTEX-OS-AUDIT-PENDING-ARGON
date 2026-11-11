@@ -97,48 +97,75 @@ CREATE OPERATOR <=> (LEFTARG = real[], RIGHTARG = real[], PROCEDURE = vector_cos
     }
 
     await exec.exec(rawSql);
+
+    // Idempotent v1 schema column extensions required by Locked Decisions:
+    await exec.exec(`
+      ALTER TABLE wiki_pages ADD COLUMN IF NOT EXISTS markdown_body text NOT NULL DEFAULT '';
+      DROP VIEW IF EXISTS agent_visible_wiki_pages;
+      CREATE VIEW agent_visible_wiki_pages AS
+        SELECT * FROM wiki_pages
+        WHERE review_state <> 'rejected'
+          AND (NOT requires_approval OR review_state = 'approved');
+
+      ALTER TABLE sources ADD COLUMN IF NOT EXISTS raw_content text NOT NULL DEFAULT '';
+      ALTER TABLE projects ADD COLUMN IF NOT EXISTS current_phase text NOT NULL DEFAULT 'discovery';
+      ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS markdown_content text NOT NULL DEFAULT '';
+
+      CREATE TABLE IF NOT EXISTS council_messages (
+        id                 uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id         uuid        NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
+        speaker_role       text        NOT NULL,
+        speaker_name       text        NOT NULL,
+        studio_name        text,
+        phase              text,
+        content            text        NOT NULL,
+        artifacts_produced text[]      NOT NULL DEFAULT '{}',
+        decisions_logged   text[]      NOT NULL DEFAULT '{}',
+        wiki_ripples       text[]      NOT NULL DEFAULT '{}',
+        timestamp_label    text        NOT NULL DEFAULT 'Just now',
+        created_at         timestamptz NOT NULL DEFAULT now()
+      );
+    `);
+
+    await seedInitialCortexData(exec);
   } else {
+    const projCountRes = await exec.query<{ cnt: string }>(
+      "SELECT count(*)::text AS cnt FROM projects"
+    );
+    if (Number(projCountRes.rows[0]?.cnt || "0") === 0) {
+      await exec.exec(`
+        ALTER TABLE wiki_pages ADD COLUMN IF NOT EXISTS markdown_body text NOT NULL DEFAULT '';
+        DROP VIEW IF EXISTS agent_visible_wiki_pages;
+        CREATE VIEW agent_visible_wiki_pages AS
+          SELECT * FROM wiki_pages
+          WHERE review_state <> 'rejected'
+            AND (NOT requires_approval OR review_state = 'approved');
+
+        ALTER TABLE sources ADD COLUMN IF NOT EXISTS raw_content text NOT NULL DEFAULT '';
+        ALTER TABLE projects ADD COLUMN IF NOT EXISTS current_phase text NOT NULL DEFAULT 'discovery';
+        ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS markdown_content text NOT NULL DEFAULT '';
+
+        CREATE TABLE IF NOT EXISTS council_messages (
+          id                 uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+          project_id         uuid        NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
+          speaker_role       text        NOT NULL,
+          speaker_name       text        NOT NULL,
+          studio_name        text,
+          phase              text,
+          content            text        NOT NULL,
+          artifacts_produced text[]      NOT NULL DEFAULT '{}',
+          decisions_logged   text[]      NOT NULL DEFAULT '{}',
+          wiki_ripples       text[]      NOT NULL DEFAULT '{}',
+          timestamp_label    text        NOT NULL DEFAULT 'Just now',
+          created_at         timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await seedInitialCortexData(exec);
+    }
     console.log(
-      "[CortexOS DB] brain_objects table exists — verifying v1 column extensions idempotently."
+      "[CortexOS DB] brain_objects table exists — boot migration check complete."
     );
   }
-
-  // Idempotent v1 schema column extensions required by Locked Decisions:
-  // 1. Wiki markdown bodies live in wiki_pages.markdown_body (DB) for v1.
-  // 2. Raw source text lives in sources.raw_content.
-  // 3. Project lifecycle phase lives in projects.current_phase.
-  // 4. Artifact markdown body lives in artifacts.markdown_content.
-  // 5. Council stream lives in council_messages.
-  await exec.exec(`
-    ALTER TABLE wiki_pages ADD COLUMN IF NOT EXISTS markdown_body text NOT NULL DEFAULT '';
-    DROP VIEW IF EXISTS agent_visible_wiki_pages;
-    CREATE VIEW agent_visible_wiki_pages AS
-      SELECT * FROM wiki_pages
-      WHERE review_state <> 'rejected'
-        AND (NOT requires_approval OR review_state = 'approved');
-
-    ALTER TABLE sources ADD COLUMN IF NOT EXISTS raw_content text NOT NULL DEFAULT '';
-    ALTER TABLE projects ADD COLUMN IF NOT EXISTS current_phase text NOT NULL DEFAULT 'discovery';
-    ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS markdown_content text NOT NULL DEFAULT '';
-
-    CREATE TABLE IF NOT EXISTS council_messages (
-      id                 uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-      project_id         uuid        NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
-      speaker_role       text        NOT NULL,
-      speaker_name       text        NOT NULL,
-      studio_name        text,
-      phase              text,
-      content            text        NOT NULL,
-      artifacts_produced text[]      NOT NULL DEFAULT '{}',
-      decisions_logged   text[]      NOT NULL DEFAULT '{}',
-      wiki_ripples       text[]      NOT NULL DEFAULT '{}',
-      timestamp_label    text        NOT NULL DEFAULT 'Just now',
-      created_at         timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-
-  // Seed initial CortexOS Studios metadata, Agents, Projects, Sources, Artifacts, Wiki, Claims, Relationships
-  await seedInitialCortexData(exec);
 
   const tablesRes = await exec.query<{ count: string }>(
     "SELECT count(*)::text AS count FROM information_schema.tables WHERE table_schema = 'public'"
