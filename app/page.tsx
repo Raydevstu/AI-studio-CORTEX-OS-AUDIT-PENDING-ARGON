@@ -78,11 +78,11 @@ export default function CortexOSApp() {
   };
 
   return (
-    <main className="flex flex-col w-full h-screen bg-[#050814] text-slate-100 overflow-hidden select-none">
+    <main className="flex flex-col w-full h-screen bg-[#0c0d0f] text-[#e4e6eb] overflow-hidden select-none">
       {/* ==================================================================== */}
       {/* TOP BAR CONTRACT: 3 ZONES (Brand Wordmark — 5 Nav Links — 1 CTA)     */}
       {/* ==================================================================== */}
-      <header className="h-13 shrink-0 px-6 bg-slate-950 border-b border-slate-800/90 flex items-center justify-between gap-8 z-30">
+      <header className="h-16 shrink-0 px-6 bg-[#0c0d0f] border-b-[1.5px] border-[#e4e6eb] flex items-center justify-between gap-8 z-30">
         {/* Zone 1: Single text element wordmark */}
         <a
           href="#top"
@@ -90,22 +90,22 @@ export default function CortexOSApp() {
             e.preventDefault();
             setActiveSurface("warroom");
           }}
-          className="text-base font-bold tracking-tight text-white whitespace-nowrap shrink-0"
+          className="font-[family-name:var(--font-display)] text-2xl font-extrabold uppercase tracking-[-0.04em] text-[#e4e6eb] whitespace-nowrap shrink-0"
         >
-          CortexOS
+          Cortex<span className="text-[#00ffa3]">OS</span>
         </a>
 
         {/* Zone 2: 5 concise single-line text navigation links */}
         <nav
           aria-label="Primary Navigation"
-          className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-300"
+          className="hidden md:flex items-center gap-6 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#e4e6eb]/50"
         >
           <button
             type="button"
             onClick={() => setActiveSurface("warroom")}
-            className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 border-b-2 ${
+            className={`hover:text-[#e4e6eb] transition-colors whitespace-nowrap shrink-0 py-2 border-b-2 ${
               activeSurface === "warroom"
-                ? "border-cyan-400 text-white font-semibold"
+                ? "border-[#00ffa3] text-[#00ffa3]"
                 : "border-transparent"
             }`}
           >
@@ -114,9 +114,9 @@ export default function CortexOSApp() {
           <button
             type="button"
             onClick={() => setActiveSurface("brain")}
-            className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 border-b-2 ${
+            className={`hover:text-[#e4e6eb] transition-colors whitespace-nowrap shrink-0 py-2 border-b-2 ${
               activeSurface === "brain"
-                ? "border-cyan-400 text-white font-semibold"
+                ? "border-[#00ffa3] text-[#00ffa3]"
                 : "border-transparent"
             }`}
           >
@@ -125,9 +125,9 @@ export default function CortexOSApp() {
           <button
             type="button"
             onClick={() => setActiveSurface("dashboard")}
-            className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 border-b-2 ${
+            className={`hover:text-[#e4e6eb] transition-colors whitespace-nowrap shrink-0 py-2 border-b-2 ${
               activeSurface === "dashboard"
-                ? "border-cyan-400 text-white font-semibold"
+                ? "border-[#00ffa3] text-[#00ffa3]"
                 : "border-transparent"
             }`}
           >
@@ -136,9 +136,9 @@ export default function CortexOSApp() {
           <button
             type="button"
             onClick={() => setActiveSurface("vault")}
-            className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 border-b-2 ${
+            className={`hover:text-[#e4e6eb] transition-colors whitespace-nowrap shrink-0 py-2 border-b-2 ${
               activeSurface === "vault"
-                ? "border-cyan-400 text-white font-semibold"
+                ? "border-[#00ffa3] text-[#00ffa3]"
                 : "border-transparent"
             }`}
           >
@@ -147,9 +147,9 @@ export default function CortexOSApp() {
           <button
             type="button"
             onClick={() => setActiveSurface("terminal")}
-            className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 border-b-2 ${
+            className={`hover:text-[#e4e6eb] transition-colors whitespace-nowrap shrink-0 py-2 border-b-2 ${
               activeSurface === "terminal"
-                ? "border-cyan-400 text-white font-semibold"
+                ? "border-[#00ffa3] text-[#00ffa3]"
                 : "border-transparent"
             }`}
           >
@@ -162,7 +162,7 @@ export default function CortexOSApp() {
           <button
             type="button"
             onClick={() => setIsModalOpen(true)}
-            className="px-3.5 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold text-xs transition-colors whitespace-nowrap shrink-0"
+            className="px-4 py-2 rounded-[2px] bg-[#00ffa3] hover:brightness-110 text-black font-extrabold text-[11px] uppercase tracking-wider transition-all whitespace-nowrap shrink-0"
           >
             Blueprint Spec
           </button>
@@ -172,43 +172,43 @@ export default function CortexOSApp() {
       {/* ==================================================================== */}
       {/* WORKSPACE MODE TOGGLE BAR (BRAIN MODE <-> WAR ROOM MODE + TOOLS)     */}
       {/* ==================================================================== */}
-      <div className="h-11 shrink-0 px-6 bg-slate-950/90 border-b border-slate-800/80 flex items-center justify-between gap-4 z-20">
+      <div className="h-12 shrink-0 px-6 bg-[#e4e6eb]/[0.06] border-b border-[#e4e6eb]/10 flex items-center justify-between gap-4 z-20">
         {/* Primary Mode Toggle: Brain Mode vs War Room Mode */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           <div
             role="group"
             aria-label="Primary Operating Mode Toggle"
-            className="flex items-center p-0.5 rounded-lg bg-slate-900 border border-slate-800"
+            className="flex items-center gap-0.5 p-0.5 bg-black border border-[#e4e6eb]/15"
           >
             <button
               type="button"
               onClick={() => setActiveSurface("brain")}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+              className={`px-3 py-1 rounded-[2px] text-[10px] uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
                 activeSurface === "brain"
-                  ? "bg-cyan-500 text-slate-950 font-semibold"
-                  : "text-slate-300 hover:text-white"
+                  ? "bg-[#00ffa3] text-black font-extrabold"
+                  : "text-[#e4e6eb]/80 hover:text-white"
               }`}
             >
-              Brain Mode (3D Second Brain)
+              Brain Mode
             </button>
             <button
               type="button"
               onClick={() => setActiveSurface("warroom")}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+              className={`px-3 py-1 rounded-[2px] text-[10px] uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
                 activeSurface === "warroom"
-                  ? "bg-cyan-500 text-slate-950 font-semibold"
-                  : "text-slate-300 hover:text-white"
+                  ? "bg-[#00ffa3] text-black font-extrabold"
+                  : "text-[#e4e6eb]/80 hover:text-white"
               }`}
             >
-              War Room Mode (HUD &amp; Council)
+              War Room Mode
             </button>
           </div>
 
-          <span className="hidden lg:inline text-xs text-slate-400">
+          <span className="hidden lg:inline font-mono text-[10px] uppercase tracking-[0.14em] text-[#e4e6eb]/55">
             {activeSurface === "warroom"
-              ? "Execution Layer: Left Research Panel · Center Jarvis Council · Right Studio Workbench"
+              ? "Execution Layer: L-Research · C-Council · R-Workbench"
               : activeSurface === "brain"
-              ? "Memory Layer: 3D Second Brain + 7 Studio Anchors + Chief Librarian + Live Artifacts"
+              ? "Memory Layer: 3D Second Brain · 7 Studio Anchors · Chief Librarian"
               : "4C Foundation Layer: Context · Connections · Capabilities · Cadence"}
           </span>
         </div>
@@ -218,10 +218,10 @@ export default function CortexOSApp() {
           <button
             type="button"
             onClick={() => setActiveSurface("grillme")}
-            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+            className={`px-3 py-1.5 border text-[10px] uppercase tracking-wider transition-colors whitespace-nowrap shrink-0 ${
               activeSurface === "grillme"
-                ? "bg-slate-800 text-cyan-300 border border-cyan-500/40"
-                : "text-slate-400 hover:text-slate-200"
+                ? "bg-[#003322] text-[#00ffa3] border-[#00ffa3]"
+                : "border-[#e4e6eb]/15 text-[#e4e6eb]/70 hover:text-[#e4e6eb]"
             }`}
           >
             Grill-Me Stress Test
@@ -229,10 +229,10 @@ export default function CortexOSApp() {
           <button
             type="button"
             onClick={() => setActiveSurface("audit")}
-            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+            className={`px-3 py-1.5 border text-[10px] uppercase tracking-wider transition-colors whitespace-nowrap shrink-0 ${
               activeSurface === "audit"
-                ? "bg-slate-800 text-cyan-300 border border-cyan-500/40"
-                : "text-slate-400 hover:text-slate-200"
+                ? "bg-[#003322] text-[#00ffa3] border-[#00ffa3]"
+                : "border-[#e4e6eb]/15 text-[#e4e6eb]/70 hover:text-[#e4e6eb]"
             }`}
           >
             4C Audit Engine
@@ -242,7 +242,7 @@ export default function CortexOSApp() {
 
       {/* Optional Toast Banner */}
       {toastMessage && (
-        <div className="shrink-0 px-6 py-2 bg-emerald-950/90 border-b border-emerald-700/60 text-xs text-emerald-200 flex items-center justify-between">
+        <div className="shrink-0 px-6 py-2 bg-[#003322] border-b border-[#00ffa3]/40 text-xs text-[#00ffa3] font-mono flex items-center justify-between">
           <span>{toastMessage}</span>
           <button
             type="button"

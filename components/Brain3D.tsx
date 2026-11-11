@@ -6,7 +6,7 @@ import {
   BrainNode,
   SourceCategory,
   SOURCES,
-  generateFullBrainGraph,
+  computeBrainNodeLayouts,
   GraphLayoutMode,
   NodeKind,
   NodeArea,
@@ -54,23 +54,49 @@ export default function Brain3D({
   customNodes = [],
 }: Brain3DProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [baseGraphData] = useState(() => generateFullBrainGraph());
+  const [dbGraph, setDbGraph] = useState<{
+    nodes: BrainNode[];
+    connections: [string, string][];
+  }>(() => computeBrainNodeLayouts([]));
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/graph/all?depth=2")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active || !Array.isArray(data.nodes)) return;
+        const edges: [string, string][] = Array.isArray(data.relationships)
+          ? data.relationships.map(
+              (r: { from_id: string; to_id: string }) =>
+                [r.from_id, r.to_id] as [string, string]
+            )
+          : [];
+        setDbGraph(computeBrainNodeLayouts(data.nodes, edges));
+      })
+      .catch(() => {
+        // Keep current graph cache on transient network error
+      });
+    return () => {
+      active = false;
+    };
+  }, [customNodes.length]);
 
   const graphData = useMemo(() => {
-    if (!customNodes || customNodes.length === 0) return baseGraphData;
-    const existingIds = new Set(baseGraphData.nodes.map((n) => n.id));
+    if (!customNodes || customNodes.length === 0) return dbGraph;
+    const existingIds = new Set(dbGraph.nodes.map((n) => n.id));
     const newNodes = customNodes.filter((n) => !existingIds.has(n.id));
+    if (newNodes.length === 0) return dbGraph;
     const extraConns: [string, string][] = [];
     newNodes.forEach((n) => {
       n.connections.forEach((tgt) => {
         extraConns.push([n.id, tgt]);
       });
     });
-    return {
-      nodes: [...newNodes, ...baseGraphData.nodes],
-      connections: [...extraConns, ...baseGraphData.connections],
-    };
-  }, [baseGraphData, customNodes]);
+    return computeBrainNodeLayouts(
+      [...newNodes, ...dbGraph.nodes],
+      [...extraConns, ...dbGraph.connections]
+    );
+  }, [dbGraph, customNodes]);
 
   // Layout & Theme State
   const [currentLayout, setCurrentLayout] = useState<GraphLayoutMode>("orbit");
@@ -839,6 +865,7 @@ export default function Brain3D({
       }
     });
   }, [
+    graphData,
     activeSources,
     onlyNeedsAttention,
     searchQuery,
@@ -1182,7 +1209,9 @@ export default function Brain3D({
                   />
                   <span className="font-medium truncate">{source.name}</span>
                 </div>
-                <span className="font-mono text-[11px] text-slate-400">{source.count}</span>
+                <span className="font-mono text-[11px] text-slate-400">
+                  {graphData.nodes.filter((n) => n.category === source.name).length}
+                </span>
               </button>
             );
           })}
@@ -1207,36 +1236,25 @@ export default function Brain3D({
       {/* Floating 2D Anchor Labels (when enabled) */}
       {labelMode !== "none" && !isCinemaMode && (
         <div className="pointer-events-none absolute inset-0 z-10">
-          <div
-            className="absolute transform -translate-x-1/2 -translate-y-1/2 px-2.5 py-1 rounded-md bg-purple-950/85 border border-purple-500/50 text-[11px] font-mono text-purple-200 backdrop-blur-md shadow-lg shadow-purple-950/30"
-            style={{ top: "22%", left: "45%" }}
-          >
-            Claude Code
-          </div>
-          <div
-            className="absolute transform -translate-x-1/2 -translate-y-1/2 px-2.5 py-1 rounded-md bg-violet-950/85 border border-violet-500/50 text-[11px] font-mono text-violet-200 backdrop-blur-md shadow-lg shadow-violet-950/30"
-            style={{ top: "35%", left: "62%" }}
-          >
-            clickup-searcher (agent)
-          </div>
-          <div
-            className="absolute transform -translate-x-1/2 -translate-y-1/2 px-2.5 py-1 rounded-md bg-sky-950/85 border border-sky-500/50 text-[11px] font-mono text-sky-200 backdrop-blur-md shadow-lg shadow-sky-950/30"
-            style={{ bottom: "35%", right: "22%" }}
-          >
-            Funnel Map
-          </div>
-          <div
-            className="absolute transform -translate-x-1/2 -translate-y-1/2 px-2.5 py-1 rounded-md bg-amber-950/85 border border-amber-500/50 text-[11px] font-mono text-amber-200 backdrop-blur-md shadow-lg shadow-amber-950/30"
-            style={{ bottom: "22%", left: "52%" }}
-          >
-            Research-backed YouTube scripts
-          </div>
-          <div
-            className="absolute transform -translate-x-1/2 -translate-y-1/2 px-2.5 py-1 rounded-md bg-rose-950/85 border border-rose-500/50 text-[11px] font-mono text-rose-200 backdrop-blur-md shadow-lg shadow-rose-950/30"
-            style={{ bottom: "42%", left: "30%" }}
-          >
-            One-off calls
-          </div>
+          {graphData.nodes.slice(0, 5).map((anchor, idx) => {
+            const positions = [
+              { top: "22%", left: "45%" },
+              { top: "35%", left: "62%" },
+              { bottom: "35%", right: "22%" },
+              { bottom: "22%", left: "52%" },
+              { bottom: "42%", left: "30%" },
+            ];
+            const pos = positions[idx] || positions[0];
+            return (
+              <div
+                key={anchor.id}
+                className="absolute transform -translate-x-1/2 -translate-y-1/2 px-2.5 py-1 rounded-md bg-slate-950/85 border border-cyan-500/50 text-[11px] font-mono text-cyan-200 backdrop-blur-md shadow-lg"
+                style={pos}
+              >
+                {anchor.title}
+              </div>
+            );
+          })}
 
           {/* Area badges in "areas" mode */}
           {currentLayout === "areas" && (
@@ -1302,12 +1320,14 @@ export default function Brain3D({
         }`}
       >
         <div className="flex items-center justify-between text-[10px] font-mono tracking-widest uppercase text-cyan-400 mb-1">
-          <span>THE GROWTH OF HERK BRAIN</span>
-          <span className="text-slate-400 font-mono text-[9px]">MAPS v2.4</span>
+          <span>CORTEXOS BRAIN GRAPH</span>
+          <span className="text-slate-400 font-mono text-[9px]">POSTGRES v1</span>
         </div>
         <div className="flex items-baseline gap-2 mb-0.5">
-          <span className="text-3xl font-extrabold text-white font-mono">935</span>
-          <span className="text-xs text-slate-400">notes in the brain</span>
+          <span className="text-3xl font-extrabold text-white font-mono">
+            {graphData.nodes.length}
+          </span>
+          <span className="text-xs text-slate-400">objects in the brain</span>
         </div>
         <div className="text-xs font-semibold text-slate-200 mb-1.5">
           Your entire brain. Connected.
@@ -1316,15 +1336,22 @@ export default function Brain3D({
         {/* MAPS Check Metrics Grid */}
         <div className="grid grid-cols-3 gap-1 py-1.5 px-2 rounded-lg bg-slate-900/80 border border-slate-800/80 text-[10px] font-mono mb-2">
           <div>
-            <div className="text-cyan-400 font-bold">98.4%</div>
-            <div className="text-slate-400 text-[8px] uppercase">Coverage</div>
+            <div className="text-cyan-400 font-bold">100%</div>
+            <div className="text-slate-400 text-[8px] uppercase">Provenance</div>
           </div>
           <div>
-            <div className="text-emerald-400 font-bold">91.2%</div>
-            <div className="text-slate-400 text-[8px] uppercase">Freshness</div>
+            <div className="text-emerald-400 font-bold">
+              {graphData.connections.length}
+            </div>
+            <div className="text-slate-400 text-[8px] uppercase">Edges</div>
           </div>
           <div>
-            <div className="text-purple-400 font-bold">3.52</div>
+            <div className="text-purple-400 font-bold">
+              {(
+                graphData.connections.length /
+                Math.max(1, graphData.nodes.length)
+              ).toFixed(2)}
+            </div>
             <div className="text-slate-400 text-[8px] uppercase">Links/Node</div>
           </div>
         </div>
@@ -1338,7 +1365,11 @@ export default function Brain3D({
         <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
           <div
             className="h-full bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-400 rounded-full transition-all duration-500"
-            style={{ width: `${(statsNoteCount / 935) * 100}%` }}
+            style={{
+              width: `${
+                (statsNoteCount / Math.max(1, graphData.nodes.length)) * 100
+              }%`,
+            }}
           />
         </div>
       </div>

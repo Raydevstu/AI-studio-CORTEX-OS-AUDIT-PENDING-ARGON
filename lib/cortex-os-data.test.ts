@@ -11,10 +11,10 @@ import {
   validateExtractionResult,
   findGraphNeighbors,
   canTransitionLifecyclePhase,
-  WikiPage,
-  Artifact,
-  Relationship,
-} from "./cortex-os-data";
+  type WikiPage,
+  type Artifact,
+  type Relationship,
+} from "./cortex-os-data.ts";
 
 const NOW = new Date().toISOString();
 const H = sha256Hex("hello");
