@@ -1,1 +1,29 @@
 @import "tailwindcss";
+
+/* ========================================================================== */
+/* CORTEX OS — SYSTEM SCROLLBAR ARCHITECTURE                                 */
+/* Ensures consistent, sleek 5px scrollbars across all browsers and panels  */
+/* ========================================================================== */
+
+* {
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(228, 230, 235, 0.22) transparent !important;
+}
+
+::-webkit-scrollbar {
+  width: 5px !important;
+  height: 5px !important;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(228, 230, 235, 0.22) !important;
+  border-radius: 2px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #00ffa3 !important;
+}

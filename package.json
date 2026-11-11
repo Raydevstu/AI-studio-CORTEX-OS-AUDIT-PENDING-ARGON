@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "node --experimental-strip-types --test lib/cortex-os-data.test.ts lib/db/persistence.test.ts",
     "lint": "eslint .",
     "clean": "next clean"
   },

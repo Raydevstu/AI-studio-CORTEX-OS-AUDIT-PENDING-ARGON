@@ -90,7 +90,7 @@ Produce:
 5. librarianSummary: 1-sentence note from the Chief Librarian confirming how this artifact was rippled into Wiki/Index.md and Wiki/Log.md.`;
 
         const response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
+          model: "gemini-3.8-flash",
           contents: prompt,
           config: {
             responseMimeType: "application/json",

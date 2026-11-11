@@ -64,7 +64,7 @@ export default function OsDashboard({
   const handleAiDraftReply = async (message: CommMessage) => {
     try {
       setIsDraftingAi(true);
-      const res = await fetch("/app/api/gemini/chat", {
+      const res = await fetch("/api/gemini/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
